@@ -1,4 +1,4 @@
 export { StatusCard } from './StatusCard';
 export { PerformanceGraphs } from './PerformanceGraphs';
-export { ServerInfoCard } from './ServerInfoCard';
+export { ConnectionDrawer } from './ConnectionDrawer';
 export { DashboardLayout } from './DashboardLayout';

@@ -2,9 +2,10 @@
 
 import { StatusCard } from './StatusCard';
 import { PerformanceGraphs } from './PerformanceGraphs';
-import { ServerInfoCard } from './ServerInfoCard';
+import { ConnectionDrawer } from './ConnectionDrawer';
 import { motion } from 'framer-motion';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, Globe } from 'lucide-react';
+import { useState } from 'react';
 
 interface DashboardLayoutProps {
   running: boolean;
@@ -35,6 +36,7 @@ export function DashboardLayout({
   javaIp,
   bedrockIp,
 }: DashboardLayoutProps) {
+  const [isConnectionDrawerOpen, setIsConnectionDrawerOpen] = useState(false);
   return (
     <div className="min-h-screen bg-black">
       {/* Background effects */}
@@ -53,34 +55,48 @@ export function DashboardLayout({
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-4 mb-2">
-            <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 flex items-center justify-center shadow-2xl shadow-emerald-500/40 overflow-hidden group">
-              {/* Animated background glow */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/20 to-cyan-400/20 animate-pulse" />
-              
-              {/* Minecraft-style cube logo */}
-              <svg className="w-8 h-8 text-white relative z-10 drop-shadow-lg" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Top face */}
-                <path d="M16 4L28 10V12L16 18L4 12V10L16 4Z" fill="currentColor" opacity="0.9"/>
-                {/* Right face */}
-                <path d="M28 10V22L16 28V18L28 12V10Z" fill="currentColor" opacity="0.7"/>
-                {/* Left face */}
-                <path d="M4 10V22L16 28V18L4 12V10Z" fill="currentColor" opacity="0.5"/>
-                {/* Grid lines for Minecraft effect */}
-                <path d="M16 4L16 18M10 7L10 15M22 7L22 15M7 11L25 11" stroke="white" strokeWidth="0.5" opacity="0.3"/>
-              </svg>
-              
-              {/* Shine effect */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <div className="flex items-center gap-4">
+              <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 flex items-center justify-center shadow-2xl shadow-emerald-500/40 overflow-hidden group">
+                {/* Animated background glow */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/20 to-cyan-400/20 animate-pulse" />
+                
+                {/* Minecraft-style cube logo */}
+                <svg className="w-8 h-8 text-white relative z-10 drop-shadow-lg" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* Top face */}
+                  <path d="M16 4L28 10V12L16 18L4 12V10L16 4Z" fill="currentColor" opacity="0.9"/>
+                  {/* Right face */}
+                  <path d="M28 10V22L16 28V18L28 12V10Z" fill="currentColor" opacity="0.7"/>
+                  {/* Left face */}
+                  <path d="M4 10V22L16 28V18L4 12V10Z" fill="currentColor" opacity="0.5"/>
+                  {/* Grid lines for Minecraft effect */}
+                  <path d="M16 4L16 18M10 7L10 15M22 7L22 15M7 11L25 11" stroke="white" strokeWidth="0.5" opacity="0.3"/>
+                </svg>
+                
+                {/* Shine effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              </div>
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
+                  Minecraft Server Dashboard
+                </h1>
+                <p className="text-white/50 text-sm mt-1">
+                  Monitor and control your server in real-time
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
-                Minecraft Server Dashboard
-              </h1>
-              <p className="text-white/50 text-sm mt-1">
-                Monitor and control your server in real-time
-              </p>
-            </div>
+            
+            {/* Connection Info Button */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsConnectionDrawerOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-300 hover:text-violet-200 transition-all shadow-lg shadow-violet-500/20"
+            >
+              <Globe className="w-4 h-4" />
+              <span className="text-sm font-medium hidden sm:inline">Connection Info</span>
+              <span className="text-sm font-medium sm:hidden">Connect</span>
+            </motion.button>
           </div>
         </motion.div>
 
@@ -122,12 +138,6 @@ export function DashboardLayout({
               startServer={startServer}
               stopServer={stopServer}
             />
-            
-            <ServerInfoCard
-              javaIp={javaIp}
-              bedrockIp={bedrockIp}
-              running={running}
-            />
           </div>
 
           {/* Right Column - Performance */}
@@ -156,6 +166,15 @@ export function DashboardLayout({
           </div>
         </motion.div>
       </div>
+
+      {/* Connection Drawer */}
+      <ConnectionDrawer
+        isOpen={isConnectionDrawerOpen}
+        onClose={() => setIsConnectionDrawerOpen(false)}
+        javaIp={javaIp}
+        bedrockIp={bedrockIp}
+        running={running}
+      />
     </div>
   );
 }
