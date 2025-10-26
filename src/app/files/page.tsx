@@ -156,12 +156,17 @@ function FilesClient() {
                   </button>
                   <span className="inline-flex items-center gap-2 text-neutral-300">
                     <button
-                      title="Delete folder"
+                      title={serverBusy ? "Delete disabled while server is running" : "Delete folder"}
+                      disabled={serverBusy}
                       onClick={() => {
+                        if (serverBusy) {
+                          showToast('Delete is disabled while server is running', 'info');
+                          return;
+                        }
                         const folderRel = rel ? `${rel}/${e.name}` : e.name;
                         setDeletingPath(folderRel);
                       }}
-                      className="hover:text-white"
+                      className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -237,8 +242,13 @@ function FilesClient() {
                       <Download className="h-4 w-4" />
                     </button>
                     { !(((rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.jar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.zip') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.rar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.log.gz'))) && (                      <button
-                        title="Edit"
+                        title={serverBusy ? "Edit disabled while server is running" : "Edit"}
+                        disabled={serverBusy}
                         onClick={async () => {
+                          if (serverBusy) {
+                            showToast('Edit is disabled while server is running', 'info');
+                            return;
+                          }
                           try {
                             const fileRel = rel ? `${rel}/${e.name}` : e.name;
                             const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
@@ -251,18 +261,23 @@ function FilesClient() {
                             alert('Failed to load file');
                           }
                         }}
-                        className="hover:text-white"
+                        className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
                     )}
                     <button
-                      title="Delete"
+                      title={serverBusy ? "Delete disabled while server is running" : "Delete"}
+                      disabled={serverBusy}
                       onClick={() => {
+                        if (serverBusy) {
+                          showToast('Delete is disabled while server is running', 'info');
+                          return;
+                        }
                         const fileRel = rel ? `${rel}/${e.name}` : e.name;
                         setDeletingPath(fileRel);
                       }}
-                      className="hover:text-white"
+                      className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
