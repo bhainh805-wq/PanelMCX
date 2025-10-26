@@ -4,7 +4,7 @@ import { StatusCard } from './StatusCard';
 import { PerformanceGraphs } from './PerformanceGraphs';
 import { ConnectionDrawer } from './ConnectionDrawer';
 import { motion } from 'framer-motion';
-import { AlertCircle, X, Globe } from 'lucide-react';
+import { AlertCircle, X, Plug2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface DashboardLayoutProps {
@@ -88,14 +88,13 @@ export function DashboardLayout({
             
             {/* Connection Info Button */}
             <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: 1.05, rotate: 5 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setIsConnectionDrawerOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-300 hover:text-violet-200 transition-all shadow-lg shadow-violet-500/20"
+              className="p-3 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-300 hover:text-violet-200 transition-all shadow-lg shadow-violet-500/20"
+              title="Connection Info"
             >
-              <Globe className="w-4 h-4" />
-              <span className="text-sm font-medium hidden sm:inline">Connection Info</span>
-              <span className="text-sm font-medium sm:hidden">Connect</span>
+              <Plug2 className="w-5 h-5" />
             </motion.button>
           </div>
         </motion.div>
