@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "../toast";
 import { Folder, File as FileIcon, ChevronLeft, Download, Pencil, Trash2, X, Eye } from "lucide-react";
@@ -11,6 +11,119 @@ type Entry = {
   size: number;
   mtime: number;
 };
+
+// Helper function to check if file is binary/non-editable
+const isNonEditableFile = (filename: string) => {
+  const lower = filename.toLowerCase();
+  return lower.endsWith('.jar') || lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.log.gz');
+};
+
+// Memoized folder row component
+const FolderRow = memo(({ 
+  name, 
+  onOpen, 
+  onDelete, 
+  serverBusy 
+}: { 
+  name: string; 
+  onOpen: () => void; 
+  onDelete: () => void; 
+  serverBusy: boolean;
+}) => (
+  <div className="w-full hover:bg-neutral-900/60">
+    <div className="p-2 text-white break-all flex items-center justify-between gap-3">
+      <button
+        onClick={onOpen}
+        className="inline-flex items-center gap-2 hover:text-neutral-200"
+        title="Open folder"
+      >
+        <Folder className="h-4 w-4" />
+        {name}
+      </button>
+      <button
+        title={serverBusy ? "Delete disabled while server is running" : "Delete folder"}
+        disabled={serverBusy}
+        onClick={onDelete}
+        className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  </div>
+));
+FolderRow.displayName = 'FolderRow';
+
+// Memoized file row component
+const FileRow = memo(({ 
+  name, 
+  fullPath,
+  onView, 
+  onEdit, 
+  onDelete, 
+  onDownload,
+  serverBusy 
+}: { 
+  name: string;
+  fullPath: string;
+  onView: () => void; 
+  onEdit: () => void; 
+  onDelete: () => void; 
+  onDownload: () => void;
+  serverBusy: boolean;
+}) => {
+  const isNonEditable = useMemo(() => isNonEditableFile(fullPath), [fullPath]);
+
+  return (
+    <div className="w-full hover:bg-neutral-900/60">
+      <div className="p-2 text-white break-all flex items-center justify-between gap-3">
+        {isNonEditable ? (
+          <span className="inline-flex items-center gap-2 text-neutral-200">
+            <FileIcon className="h-4 w-4" />
+            {name}
+          </span>
+        ) : (
+          <button
+            onClick={onView}
+            className="inline-flex items-center gap-2 hover:text-neutral-200"
+            title="View"
+          >
+            <FileIcon className="h-4 w-4" />
+            {name}
+          </button>
+        )}
+        <span className="inline-flex items-center gap-2 text-neutral-300">
+          {!isNonEditable && (
+            <button title="View" onClick={onView} className="hover:text-white">
+              <Eye className="h-4 w-4" />
+            </button>
+          )}
+          <button title="Download" onClick={onDownload} className="hover:text-white">
+            <Download className="h-4 w-4" />
+          </button>
+          {!isNonEditable && (
+            <button
+              title={serverBusy ? "Edit disabled while server is running" : "Edit"}
+              disabled={serverBusy}
+              onClick={onEdit}
+              className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            title={serverBusy ? "Delete disabled while server is running" : "Delete"}
+            disabled={serverBusy}
+            onClick={onDelete}
+            className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+});
+FileRow.displayName = 'FileRow';
 
 function FilesClient() {
   const [entries, setEntries] = useState<Entry[] | null>(null);
@@ -27,40 +140,180 @@ function FilesClient() {
   const router = useRouter();
   const rel = searchParams.get("path") || "";
 
+  // Memoize sorted entries
+  const { folders, files } = useMemo(() => {
+    if (!entries) return { folders: [], files: [] };
+    return {
+      folders: entries.filter(e => e.isDir),
+      files: entries.filter(e => !e.isDir)
+    };
+  }, [entries]);
+
+  // Load files
+  const loadFiles = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = rel ? `?path=${encodeURIComponent(rel)}` : "";
+      const res = await fetch(`/api/list-mc${qs}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const data = await res.json();
+      setEntries(data.entries || []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load files");
+    } finally {
+      setLoading(false);
+    }
+  }, [rel]);
+
+  // Initial load
   useEffect(() => {
-    const run = async () => {
-      setLoading(true);
-      setError(null);
+    loadFiles();
+  }, [loadFiles]);
+
+  // Use SSE for server status
+  useEffect(() => {
+    const eventSource = new EventSource('/api/server-status-stream');
+
+    eventSource.onmessage = (event) => {
       try {
-        // Update server busy status
-        try {
-          const sres = await fetch('/api/check-server');
-          const sdata = await sres.json();
-          const busy = sdata?.status === 'online' || sdata?.status === 'starting' || sdata?.status === 'stopping';
-          setServerBusy(!!busy);
-        } catch {}
-        const qs = rel ? `?path=${encodeURIComponent(rel)}` : "";
-        const res = await fetch(`/api/list-mc${qs}`);
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-        const data = await res.json();
-        setEntries(data.entries || []);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load files");
-      } finally {
-        setLoading(false);
+        const data = JSON.parse(event.data);
+        const busy = data?.status === 'online' || data?.status === 'starting' || data?.status === 'stopping';
+        setServerBusy(!!busy);
+      } catch (e) {
+        console.error('[SSE] Failed to parse status:', e);
       }
     };
-    run();
-    const id = setInterval(async () => {
-      try {
-        const sres = await fetch('/api/check-server');
-        const sdata = await sres.json();
-        const busy = sdata?.status === 'online' || sdata?.status === 'starting' || sdata?.status === 'stopping';
-        setServerBusy(!!busy);
-      } catch {}
-    }, 5000);
-    return () => clearInterval(id);
-  }, [rel]);
+
+    eventSource.onerror = () => {
+      // EventSource will automatically reconnect
+    };
+
+    return () => eventSource.close();
+  }, []);
+
+  // Handlers
+  const handleFolderOpen = useCallback((name: string) => {
+    const next = rel ? `${rel}/${name}` : name;
+    router.push(`/files?path=${encodeURIComponent(next)}`);
+  }, [rel, router]);
+
+  const handleFolderDelete = useCallback((name: string) => {
+    if (serverBusy) {
+      showToast('Delete is disabled while server is running', 'info');
+      return;
+    }
+    const folderRel = rel ? `${rel}/${name}` : name;
+    setDeletingPath(folderRel);
+  }, [rel, serverBusy, showToast]);
+
+  const handleFileView = useCallback(async (name: string) => {
+    try {
+      const fileRel = rel ? `${rel}/${name}` : name;
+      const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
+      if (!res.ok) throw new Error('Failed to load file');
+      const data = await res.json();
+      setViewingPath(fileRel);
+      setViewingContent(data.content ?? "");
+    } catch (err) {
+      console.error(err);
+      showToast('✗ Failed to load file', 'error');
+    }
+  }, [rel, showToast]);
+
+  const handleFileEdit = useCallback(async (name: string) => {
+    if (serverBusy) {
+      showToast('Edit is disabled while server is running', 'info');
+      return;
+    }
+    try {
+      const fileRel = rel ? `${rel}/${name}` : name;
+      const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
+      if (!res.ok) throw new Error('Failed to load file');
+      const data = await res.json();
+      setEditingPath(fileRel);
+      setEditingContent(data.content ?? "");
+    } catch (err) {
+      console.error(err);
+      showToast('✗ Failed to load file', 'error');
+    }
+  }, [rel, serverBusy, showToast]);
+
+  const handleFileDelete = useCallback((name: string) => {
+    if (serverBusy) {
+      showToast('Delete is disabled while server is running', 'info');
+      return;
+    }
+    const fileRel = rel ? `${rel}/${name}` : name;
+    setDeletingPath(fileRel);
+  }, [rel, serverBusy, showToast]);
+
+  const handleFileDownload = useCallback(async (name: string) => {
+    try {
+      const fileRel = rel ? `${rel}/${name}` : name;
+      showToast(`⬇ Downloading ${name}...`, 'info', 2000);
+      const url = `/api/mc-file?path=${encodeURIComponent(fileRel)}&download=1`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => {
+        showToast(`✓ ${name} downloaded`, 'success');
+      }, 500);
+    } catch (err) {
+      console.error(err);
+      showToast('✗ Download failed', 'error');
+    }
+  }, [rel, showToast]);
+
+  const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (serverBusy) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const form = new FormData();
+    Array.from(files).forEach(f => form.append('files', f));
+    const qs = rel ? `?path=${encodeURIComponent(rel)}` : '';
+    const res = await fetch(`/api/upload-mc${qs}`, { method: 'POST', body: form });
+    if (!res.ok) {
+      showToast('✗ Upload failed', 'error');
+      return;
+    }
+    showToast('✓ Files uploaded successfully', 'success');
+    await loadFiles();
+    e.currentTarget.value = '';
+  }, [serverBusy, rel, showToast, loadFiles]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mc-file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: editingPath, content: editingContent })
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setEditingPath(null);
+      showToast('✓ File saved successfully', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('✗ Failed to save file', 'error');
+    }
+  }, [editingPath, editingContent, showToast]);
+
+  const handleDelete = useCallback(async () => {
+    try {
+      showToast('Deleting...', 'info', 1500);
+      const res = await fetch(`/api/mc-file?path=${encodeURIComponent(deletingPath!)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setDeletingPath(null);
+      showToast('✓ File deleted successfully', 'success');
+      await loadFiles();
+    } catch (err) {
+      console.error(err);
+      showToast('✗ Failed to delete file', 'error');
+    }
+  }, [deletingPath, showToast, loadFiles]);
 
   return (
     <div className="flex-1 overflow-auto">
@@ -83,40 +336,21 @@ function FilesClient() {
             <h1 className="text-xl font-bold text-white">Files{rel ? ` / ${rel}` : ""}</h1>
           </div>
           <div>
-            <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm cursor-pointer ${serverBusy ? 'bg-neutral-700 text-neutral-400 cursor-not-allowed' : 'bg-white text-black hover:opacity-90'}`}
-            onClick={(e) => {
-              if (serverBusy) {
-                e.preventDefault();
-                showToast('Uploads are disabled while server is running or busy', 'info');
-              }
-            }}
+            <label 
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm cursor-pointer ${serverBusy ? 'bg-neutral-700 text-neutral-400 cursor-not-allowed' : 'bg-white text-black hover:opacity-90'}`}
+              onClick={(e) => {
+                if (serverBusy) {
+                  e.preventDefault();
+                  showToast('Uploads are disabled while server is running or busy', 'info');
+                }
+              }}
             >
               <input
                 type="file"
                 multiple
                 className="hidden"
                 disabled={serverBusy}
-                onChange={async (e) => {
-                  if (serverBusy) return;
-                  const files = e.target.files;
-                  if (!files || files.length === 0) return;
-                  const form = new FormData();
-                  Array.from(files).forEach(f => form.append('files', f));
-                  const qs = rel ? `?path=${encodeURIComponent(rel)}` : '';
-                  const res = await fetch(`/api/upload-mc${qs}`, { method: 'POST', body: form });
-                  if (!res.ok) {
-                    showToast('✗ Upload failed', 'error');
-                    return;
-                  }
-                  showToast('✓ Files uploaded successfully', 'success');
-                  // refresh listing
-                  const listQs = rel ? `?path=${encodeURIComponent(rel)}` : '';
-                  const res2 = await fetch(`/api/list-mc${listQs}`);
-                  const data2 = await res2.json();
-                  setEntries(data2.entries || []);
-                  // reset input
-                  e.currentTarget.value = '';
-                }}
+                onChange={handleUpload}
               />
               Upload
             </label>
@@ -139,161 +373,26 @@ function FilesClient() {
             <div className="grid grid-cols-1 bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wide">
               <div className="p-2">Name</div>
             </div>
-            {/* Folders first */}
-            {entries?.filter(e => e.isDir).map((e, i) => (
-              <div key={`d-${i}`} className="w-full hover:bg-neutral-900/60">
-                <div className="p-2 text-white break-all flex items-center justify-between gap-3">
-                  <button
-                    onClick={() => {
-                      const next = rel ? `${rel}/${e.name}` : e.name;
-                      router.push(`/files?path=${encodeURIComponent(next)}`);
-                    }}
-                    className="inline-flex items-center gap-2 hover:text-neutral-200"
-                    title="Open folder"
-                  >
-                    <Folder className="h-4 w-4" />
-                    {e.name}
-                  </button>
-                  <span className="inline-flex items-center gap-2 text-neutral-300">
-                    <button
-                      title={serverBusy ? "Delete disabled while server is running" : "Delete folder"}
-                      disabled={serverBusy}
-                      onClick={() => {
-                        if (serverBusy) {
-                          showToast('Delete is disabled while server is running', 'info');
-                          return;
-                        }
-                        const folderRel = rel ? `${rel}/${e.name}` : e.name;
-                        setDeletingPath(folderRel);
-                      }}
-                      className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </span>
-                </div>
-              </div>
+            {folders.map((e, i) => (
+              <FolderRow
+                key={`d-${e.name}-${i}`}
+                name={e.name}
+                onOpen={() => handleFolderOpen(e.name)}
+                onDelete={() => handleFolderDelete(e.name)}
+                serverBusy={serverBusy}
+              />
             ))}
-            {/* Files */}
-            {entries?.filter(e => !e.isDir).map((e, i) => (
-              <div key={`f-${i}`} className="w-full hover:bg-neutral-900/60">
-                <div className="p-2 text-white break-all flex items-center justify-between gap-3">
-                  {(((rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.jar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.zip') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.rar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.log.gz')) ? (                    <span className="inline-flex items-center gap-2 text-neutral-200">
-                      <FileIcon className="h-4 w-4" />
-                      {e.name}
-                    </span>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                          const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
-                          if (!res.ok) throw new Error('Failed to load file');
-                          const data = await res.json();
-                          setViewingPath(fileRel);
-                          setViewingContent(data.content ?? "");
-                        } catch (err) {
-                          console.error(err);
-                          alert('Failed to load file');
-                        }
-                      }}
-                      className="inline-flex items-center gap-2 hover:text-neutral-200"
-                      title="View"
-                    >
-                      <FileIcon className="h-4 w-4" />
-                      {e.name}
-                    </button>
-                  ))}
-                  <span className="inline-flex items-center gap-2 text-neutral-300">
-                    { !(((rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.jar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.zip') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.rar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.log.gz'))) && (                      <button
-                        title="View"
-                        onClick={async () => {
-                          try {
-                            const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                            const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
-                            if (!res.ok) throw new Error('Failed to load file');
-                            const data = await res.json();
-                            setViewingPath(fileRel);
-                            setViewingContent(data.content ?? "");
-                          } catch (err) {
-                            console.error(err);
-                            alert('Failed to load file');
-                          }
-                        }}
-                        className="hover:text-white"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      title="Download"
-                      onClick={async () => {
-                        try {
-                          const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                          showToast(`⬇ Downloading ${e.name}...`, 'info', 2000);
-                          const url = `/api/mc-file?path=${encodeURIComponent(fileRel)}&download=1`;
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = e.name;
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          // Show success after a short delay
-                          setTimeout(() => {
-                            showToast(`✓ ${e.name} downloaded`, 'success');
-                          }, 500);
-                        } catch (err) {
-                          console.error(err);
-                          showToast('✗ Download failed', 'error');
-                        }
-                      }}
-                      className="hover:text-white"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
-                    { !(((rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.jar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.zip') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.rar') || (rel ? `${rel}/${e.name}` : e.name).toLowerCase().endsWith('.log.gz'))) && (                      <button
-                        title={serverBusy ? "Edit disabled while server is running" : "Edit"}
-                        disabled={serverBusy}
-                        onClick={async () => {
-                          if (serverBusy) {
-                            showToast('Edit is disabled while server is running', 'info');
-                            return;
-                          }
-                          try {
-                            const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                            const res = await fetch(`/api/mc-file?path=${encodeURIComponent(fileRel)}`);
-                            if (!res.ok) throw new Error('Failed to load file');
-                            const data = await res.json();
-                            setEditingPath(fileRel);
-                            setEditingContent(data.content ?? "");
-                          } catch (err) {
-                            console.error(err);
-                            alert('Failed to load file');
-                          }
-                        }}
-                        className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      title={serverBusy ? "Delete disabled while server is running" : "Delete"}
-                      disabled={serverBusy}
-                      onClick={() => {
-                        if (serverBusy) {
-                          showToast('Delete is disabled while server is running', 'info');
-                          return;
-                        }
-                        const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                        setDeletingPath(fileRel);
-                      }}
-                      className={serverBusy ? "text-neutral-600 cursor-not-allowed" : "hover:text-white"}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </span>
-                </div>
-              </div>
+            {files.map((e, i) => (
+              <FileRow
+                key={`f-${e.name}-${i}`}
+                name={e.name}
+                fullPath={rel ? `${rel}/${e.name}` : e.name}
+                onView={() => handleFileView(e.name)}
+                onEdit={() => handleFileEdit(e.name)}
+                onDelete={() => handleFileDelete(e.name)}
+                onDownload={() => handleFileDownload(e.name)}
+                serverBusy={serverBusy}
+              />
             ))}
 
             {/* Editor modal */}
@@ -307,7 +406,7 @@ function FilesClient() {
                     </button>
                   </div>
                   <textarea
-                    className="flex-1 p-3 bg-neutral-950 text-neutral-100 outline-none resize-none"
+                    className="flex-1 p-3 bg-neutral-950 text-neutral-100 outline-none resize-none font-mono text-sm"
                     value={editingContent}
                     onChange={(e) => setEditingContent(e.target.value)}
                   />
@@ -319,21 +418,7 @@ function FilesClient() {
                       Cancel
                     </button>
                     <button
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/mc-file', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: editingPath, content: editingContent })
-                          });
-                          if (!res.ok) throw new Error('Save failed');
-                          setEditingPath(null);
-                          showToast('✓ File saved successfully', 'success');
-                        } catch (err) {
-                          console.error(err);
-                          alert('Failed to save file');
-                        }
-                      }}
+                      onClick={handleSave}
                       className="px-3 py-1.5 text-sm rounded bg-white text-black hover:opacity-90"
                     >
                       Save
@@ -353,7 +438,7 @@ function FilesClient() {
                       <X className="h-4 w-4" />
                     </button>
                   </div>
-                  <pre className="flex-1 p-3 bg-neutral-950 text-neutral-100 overflow-auto whitespace-pre-wrap break-words">{viewingContent}</pre>
+                  <pre className="flex-1 p-3 bg-neutral-950 text-neutral-100 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">{viewingContent}</pre>
                   <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-neutral-800">
                     <button
                       onClick={() => setViewingPath(null)}
@@ -375,23 +460,7 @@ function FilesClient() {
                   <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-neutral-800">
                     <button onClick={() => setDeletingPath(null)} className="px-3 py-1.5 text-sm rounded bg-neutral-800 text-neutral-200 hover:bg-neutral-700">Cancel</button>
                     <button
-                      onClick={async () => {
-                        try {
-                          showToast('Deleting...', 'info', 1500);
-                          const res = await fetch(`/api/mc-file?path=${encodeURIComponent(deletingPath!)}`, { method: 'DELETE' });
-                          if (!res.ok) throw new Error('Delete failed');
-                          setDeletingPath(null);
-                          showToast('✓ File deleted successfully', 'success');
-                          // refresh listing
-                          const qs = rel ? `?path=${encodeURIComponent(rel)}` : "";
-                          const res2 = await fetch(`/api/list-mc${qs}`);
-                          const data2 = await res2.json();
-                          setEntries(data2.entries || []);
-                        } catch (err) {
-                          console.error(err);
-                          showToast('✗ Failed to delete file', 'error');
-                        }
-                      }}
+                      onClick={handleDelete}
                       className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-500"
                     >
                       Delete
@@ -423,14 +492,4 @@ export default function FilesPage() {
       <FilesClient />
     </Suspense>
   );
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  const gb = mb / 1024;
-  return `${gb.toFixed(1)} GB`;
 }
