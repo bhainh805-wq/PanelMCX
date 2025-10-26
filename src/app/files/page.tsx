@@ -228,14 +228,24 @@ function FilesClient() {
                     <button
                       title="Download"
                       onClick={async () => {
-                        const fileRel = rel ? `${rel}/${e.name}` : e.name;
-                        const url = `/api/mc-file?path=${encodeURIComponent(fileRel)}&download=1`;
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = e.name;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
+                        try {
+                          const fileRel = rel ? `${rel}/${e.name}` : e.name;
+                          showToast(`⬇ Downloading ${e.name}...`, 'info', 2000);
+                          const url = `/api/mc-file?path=${encodeURIComponent(fileRel)}&download=1`;
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = e.name;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          // Show success after a short delay
+                          setTimeout(() => {
+                            showToast(`✓ ${e.name} downloaded`, 'success');
+                          }, 500);
+                        } catch (err) {
+                          console.error(err);
+                          showToast('✗ Download failed', 'error');
+                        }
                       }}
                       className="hover:text-white"
                     >
