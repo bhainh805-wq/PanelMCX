@@ -84,7 +84,7 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
-  }, [checkStatus]);
+  }, [sendInput]);
 
   const stopServer = useCallback(async () => {
     setBusy(true); setError(null); setPreparing(false);
@@ -94,11 +94,9 @@ export default function Home() {
     stoppingHoldUntilRef.current = Date.now() + HOLD_MS;
     if (stoppingTimerRef.current) window.clearTimeout(stoppingTimerRef.current);
     stoppingTimerRef.current = window.setTimeout(() => {
-      // Release hold; allow checkStatus to update 'stopping'
+      // Release hold; SSE will update status
       stoppingHoldUntilRef.current = 0;
       setStopping(false);
-      // Re-check status after hold ends to reflect API
-      checkStatus();
       stoppingTimerRef.current = null;
     }, HOLD_MS);
 
@@ -114,7 +112,7 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
-  }, [checkStatus]);
+  }, [sendInput]);
 
   useEffect(() => {
     // Set up Server-Sent Events for real-time status updates
