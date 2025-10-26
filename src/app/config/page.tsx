@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useToast } from "../toast";
+import { loadConfig, saveConfig } from "./actions/configActions";
 
 // The config keys we support (as per src/config.ts)
 const DEFAULTS = {
@@ -22,7 +23,6 @@ export default function ConfigPanelPage() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [parsed, setParsed] = useState<{ [k: string]: string }>({});
 
   const cfgObj = useMemo(() => {
     const out: Record<string, string> = {};
@@ -52,10 +52,11 @@ export default function ConfigPanelPage() {
     const run = async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/config-panel", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to load config.panel: ${res.status}`);
-        const data = await res.json();
-        setContent(data.content || "");
+        const result = await loadConfig();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to load config');
+        }
+        setContent(result.content || "");
       } catch (e: any) {
         showToast(e?.message || "Failed to load config.panel", "error");
       } finally {
@@ -68,16 +69,11 @@ export default function ConfigPanelPage() {
   const onSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/config-panel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || `Save failed: ${res.status}`);
+      const result = await saveConfig(content);
+      if (!result.success) {
+        throw new Error(result.error || 'Save failed');
       }
-      showToast("Saved", "success");
+      showToast("✓ Saved successfully", "success");
     } catch (e: any) {
       showToast(e?.message || "Failed to save", "error");
     } finally {
@@ -118,22 +114,22 @@ export default function ConfigPanelPage() {
                 onChange={(e) => setContent(e.target.value)}
                 spellCheck={false}
               />
-              <p className="text-xs text-neutral-400">Tip: Use KEY=VALUE lines. Supported: MC_DIR, JAR_NAME, MIN_RAM, MAX_RAM.</p>
+              <p className="text-xs text-neutral-400">Tip: Use KEY=VALUE lines. Supported: MC_DIR, JAR_NAME, MIN_RAM, MAX_RAM, JAVA_IP, BEDROCK_IP, ENABLE_PINGGY, ENABLE_PLAYIT.</p>
             </div>
 
             <div className="flex flex-col gap-3">
               <div>
-                <h2 className="font-semibold">Parsed</h2>
+                <h2 className="font-semibold text-white mb-2">Parsed</h2>
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
-                  <pre className="whitespace-pre-wrap break-all">{JSON.stringify(cfgObj, null, 2)}</pre>
+                  <pre className="whitespace-pre-wrap break-all text-neutral-300">{JSON.stringify(cfgObj, null, 2)}</pre>
                 </div>
               </div>
 
               <div>
-                <h2 className="font-semibold">Java command</h2>
+                <h2 className="font-semibold text-white mb-2">Java command</h2>
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
                   {javaCmd ? (
-                    <code className="break-all">{javaCmd}</code>
+                    <code className="break-all text-emerald-400">{javaCmd}</code>
                   ) : (
                     <p className="text-neutral-400">Fill MC_DIR and JAR_NAME to see the command</p>
                   )}
