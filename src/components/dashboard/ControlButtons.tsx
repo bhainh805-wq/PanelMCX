@@ -123,13 +123,6 @@ export function ControlButtons({
             )}
           </motion.button>
         </div>
-
-        {/* Info text */}
-        <div className="mt-6 p-4 rounded-lg bg-neutral-900/50 border border-neutral-800">
-          <p className="text-xs text-white/50 text-center">
-            Use these controls to manage your Minecraft server. Start will initialize the server, Stop will gracefully shut it down.
-          </p>
-        </div>
       </div>
     </motion.div>
   );

@@ -24,7 +24,7 @@ const USE_BLESSED = false;
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
-const port = 3001;
+const port = 8000;
 
 // Initialize Next.js
 const app = next({ dev, hostname, port });
@@ -284,7 +284,7 @@ app.prepare().then(() => {
     const startPinggyTunnel = async () => {
       try {
         const t = pinggy.createTunnel({
-          forwarding: 'localhost:3001',
+          forwarding: 'localhost:8000',
           token: 'Y1hbhDl87Pi',
           autoReconnect: true,
           reconnectInterval: 5,
