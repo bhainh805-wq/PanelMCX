@@ -139,18 +139,15 @@ export function StatusCard({
                 onClick={startServer}
                 disabled={startDisabled}
                 className={`
-                  group relative overflow-hidden rounded-lg px-4 py-3
+                  rounded-lg px-4 py-3
                   font-semibold text-sm transition-all duration-300
                   ${startDisabled
                     ? 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800'
-                    : 'bg-gradient-to-br from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 border border-emerald-400/30'
+                    : 'bg-green-600 hover:bg-green-500 text-white border border-green-700'
                   }
                 `}
               >
-                {!startDisabled && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                )}
-                <div className="relative flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-2">
                   {busy && !running ? (
                     <>
                       <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -166,9 +163,6 @@ export function StatusCard({
                     </>
                   )}
                 </div>
-                {!startDisabled && (
-                  <div className="absolute inset-0 rounded-lg bg-emerald-400/20 blur-xl group-hover:bg-emerald-400/30 transition-all" />
-                )}
               </motion.button>
 
               {/* Stop Button */}
@@ -178,18 +172,15 @@ export function StatusCard({
                 onClick={stopServer}
                 disabled={stopDisabled}
                 className={`
-                  group relative overflow-hidden rounded-lg px-4 py-3
+                  rounded-lg px-4 py-3
                   font-semibold text-sm transition-all duration-300
                   ${stopDisabled
                     ? 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800'
-                    : 'bg-gradient-to-br from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white shadow-lg shadow-red-500/30 hover:shadow-red-500/50 border border-red-400/30'
+                    : 'bg-red-600 hover:bg-red-500 text-white border border-red-700'
                   }
                 `}
               >
-                {!stopDisabled && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                )}
-                <div className="relative flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-2">
                   {busy && (running || stopping) ? (
                     <>
                       <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -205,9 +196,6 @@ export function StatusCard({
                     </>
                   )}
                 </div>
-                {!stopDisabled && (
-                  <div className="absolute inset-0 rounded-lg bg-red-400/20 blur-xl group-hover:bg-red-400/30 transition-all" />
-                )}
               </motion.button>
             </div>
           </div>
