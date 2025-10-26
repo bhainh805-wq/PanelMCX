@@ -12,7 +12,7 @@ export default function Home() {
   const [statusReady, setStatusReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverInfo, setServerInfo] = useState<any>(null);
-  const pollRef = useRef<number | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const stoppingHoldUntilRef = useRef<number>(0);
   const stoppingTimerRef = useRef<number | null>(null);
@@ -20,29 +20,22 @@ export default function Home() {
   const [javaIp, setJavaIp] = useState<string>('');
   const [bedrockIp, setBedrockIp] = useState<string>('');
 
-  const checkStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/check-server');
-      const data = await res.json();
-      const isOnline = data?.status === 'online';
-      const isStarting = data?.status === 'starting' || data?.status === 'preparing';
-      const isStopping = data?.status === 'stopping';
-      setRunning(isOnline);
-      setServerInfo(data);
-      // reflect remote status in local flags
-      setPreparing(isStarting);
-      if (isStopping) setStopping(true);
-      if (isOnline) {
-        // Only clear 'stopping' if hold window has elapsed
-        if (Date.now() > stoppingHoldUntilRef.current) setStopping(false);
-      } else {
-        if (Date.now() > stoppingHoldUntilRef.current && !isStopping) setStopping(false);
-      }
-    } catch (e) {
-      // ignore errors; keep prior state
-    } finally {
-      setStatusReady(true);
+  const handleStatusUpdate = useCallback((data: any) => {
+    const isOnline = data?.status === 'online';
+    const isStarting = data?.status === 'starting' || data?.status === 'preparing';
+    const isStopping = data?.status === 'stopping';
+    setRunning(isOnline);
+    setServerInfo(data);
+    // reflect remote status in local flags
+    setPreparing(isStarting);
+    if (isStopping) setStopping(true);
+    if (isOnline) {
+      // Only clear 'stopping' if hold window has elapsed
+      if (Date.now() > stoppingHoldUntilRef.current) setStopping(false);
+    } else {
+      if (Date.now() > stoppingHoldUntilRef.current && !isStopping) setStopping(false);
     }
+    setStatusReady(true);
   }, []);
 
   // Setup a lightweight WS connection to send commands and receive uptime
@@ -84,7 +77,7 @@ export default function Home() {
       if (!ok) throw new Error('Terminal connection not ready');
       // Notify server to start uptime counter
       panelAction('start');
-      setTimeout(checkStatus, 4000);
+      // Status will be updated via SSE
     } catch (e: any) {
       setError(e?.message || 'Failed to start');
       setPreparing(false);
@@ -115,7 +108,7 @@ export default function Home() {
       // Notify server to stop uptime counter immediately
       panelAction('stop');
       // Optional mid-check for visibility; won't clear stopping due to hold
-      setTimeout(checkStatus, 2000);
+      // Status will be updated via SSE
     } catch (e: any) {
       setError(e?.message || 'Failed to stop');
     } finally {
@@ -124,8 +117,23 @@ export default function Home() {
   }, [checkStatus]);
 
   useEffect(() => {
-    checkStatus();
-    pollRef.current = window.setInterval(checkStatus, 3000);
+    // Set up Server-Sent Events for real-time status updates
+    const eventSource = new EventSource('/api/server-status-stream');
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleStatusUpdate(data);
+      } catch (e) {
+        console.error('[SSE] Failed to parse status:', e);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('[SSE] Connection error:', error);
+      // EventSource will automatically reconnect
+    };
 
     // Load IPs from config.panel
     (async () => {
@@ -137,12 +145,16 @@ export default function Home() {
       } catch {}
     })();
 
-    // WS-driven uptime is handled in the Terminal WS layer; no HTTP polling needed
+    // Cleanup
     return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-      if (stoppingTimerRef.current) window.clearTimeout(stoppingTimerRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+      if (stoppingTimerRef.current) {
+        window.clearTimeout(stoppingTimerRef.current);
+      }
     };
-  }, [checkStatus]);
+  }, [handleStatusUpdate]);
 
   return (
     <DashboardLayout
