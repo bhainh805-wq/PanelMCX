@@ -105,10 +105,10 @@ function FilesClient() {
                   const qs = rel ? `?path=${encodeURIComponent(rel)}` : '';
                   const res = await fetch(`/api/upload-mc${qs}`, { method: 'POST', body: form });
                   if (!res.ok) {
-                    alert('Upload failed');
+                    showToast('✗ Upload failed', 'error');
                     return;
                   }
-                  showToast('Upload successful', 'success');
+                  showToast('✓ Files uploaded successfully', 'success');
                   // refresh listing
                   const listQs = rel ? `?path=${encodeURIComponent(rel)}` : '';
                   const res2 = await fetch(`/api/list-mc${listQs}`);
@@ -318,7 +318,7 @@ function FilesClient() {
                           });
                           if (!res.ok) throw new Error('Save failed');
                           setEditingPath(null);
-                          showToast('Saved successfully', 'success');
+                          showToast('✓ File saved successfully', 'success');
                         } catch (err) {
                           console.error(err);
                           alert('Failed to save file');
@@ -367,10 +367,11 @@ function FilesClient() {
                     <button
                       onClick={async () => {
                         try {
+                          showToast('Deleting...', 'info', 1500);
                           const res = await fetch(`/api/mc-file?path=${encodeURIComponent(deletingPath!)}`, { method: 'DELETE' });
                           if (!res.ok) throw new Error('Delete failed');
                           setDeletingPath(null);
-                          showToast('Deleted successfully', 'success');
+                          showToast('✓ File deleted successfully', 'success');
                           // refresh listing
                           const qs = rel ? `?path=${encodeURIComponent(rel)}` : "";
                           const res2 = await fetch(`/api/list-mc${qs}`);
@@ -378,7 +379,7 @@ function FilesClient() {
                           setEntries(data2.entries || []);
                         } catch (err) {
                           console.error(err);
-                          alert('Failed to delete');
+                          showToast('✗ Failed to delete file', 'error');
                         }
                       }}
                       className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-500"
