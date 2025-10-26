@@ -11,7 +11,7 @@ export function BottomNav() {
   const isFiles = pathname?.startsWith("/files");
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t border-neutral-800 bg-neutral-950/90 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-neutral-800 bg-neutral-950/90 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60">
       <div className="mx-auto max-w-5xl">
         <div className="grid grid-cols-3">
           <Link
