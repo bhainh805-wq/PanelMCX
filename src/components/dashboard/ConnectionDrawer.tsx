@@ -74,13 +74,6 @@ export function ConnectionDrawer({ isOpen, onClose, javaIp, bedrockIp, running }
                   available={!!bedrockIp}
                 />
               </div>
-
-              {/* Help Text */}
-              <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30">
-                <p className="text-xs text-blue-300/80">
-                  💡 Click the copy button to copy the server address to your clipboard. Use this address in Minecraft to connect to your server.
-                </p>
-              </div>
             </div>
           </motion.div>
         </>
