@@ -55,19 +55,6 @@ export function ConnectionDrawer({ isOpen, onClose, javaIp, bedrockIp, running }
 
             {/* Content */}
             <div className="p-6 space-y-6">
-              {/* Server Status */}
-              <div className="p-4 rounded-xl bg-neutral-900/50 border border-neutral-800">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-white/60">Server Status</p>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                    <span className={`text-sm font-medium ${running ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {running ? 'Accepting Connections' : 'Offline'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
               {/* Java Edition */}
               <div>
                 <h3 className="text-sm font-medium text-white/70 mb-3">Java Edition</h3>
