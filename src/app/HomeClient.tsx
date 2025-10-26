@@ -7,9 +7,10 @@ import { DashboardLayout } from '@/components/dashboard';
 interface HomeClientProps {
   javaIp: string;
   bedrockIp: string;
+  startCommand: string;
 }
 
-export default function HomeClient({ javaIp, bedrockIp }: HomeClientProps) {
+export default function HomeClient({ javaIp, bedrockIp, startCommand }: HomeClientProps) {
   const [running, setRunning] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,13 +68,9 @@ export default function HomeClient({ javaIp, bedrockIp }: HomeClientProps) {
     setBusy(true); setError(null); setStopping(false);
     setPreparing(true);
     try {
-      // Fetch unified command from API built from config.panel
-      const cmdRes = await fetch('/api/config-panel?mode=command', { cache: 'no-store' });
-      if (!cmdRes.ok) throw new Error('Failed to build command from config');
-      const cmdData = await cmdRes.json();
-      const command = cmdData?.command as string;
-      if (!command) throw new Error('Command not available');
-      const ok = sendInput(command + "\n");
+      // Use command built from config on server side
+      if (!startCommand) throw new Error('Start command not available');
+      const ok = sendInput(startCommand + "\n");
       if (!ok) throw new Error('Terminal connection not ready');
       // Notify server to start uptime counter
       panelAction('start');
@@ -84,7 +81,7 @@ export default function HomeClient({ javaIp, bedrockIp }: HomeClientProps) {
     } finally {
       setBusy(false);
     }
-  }, [sendInput]);
+  }, [sendInput, startCommand]);
 
   const stopServer = useCallback(async () => {
     setBusy(true); setError(null); setPreparing(false);
