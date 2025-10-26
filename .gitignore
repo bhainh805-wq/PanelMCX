@@ -39,3 +39,6 @@ next-env.d.ts
 /java/
 /mc/
 /ssh/
+
+# local docs not for VCS
+AGENTS.md
