@@ -1,7 +1,6 @@
 'use client';
 
 import { StatusCard } from './StatusCard';
-import { ControlButtons } from './ControlButtons';
 import { PerformanceGraphs } from './PerformanceGraphs';
 import { ServerInfoCard } from './ServerInfoCard';
 import { motion } from 'framer-motion';
@@ -106,6 +105,9 @@ export function DashboardLayout({
               stopping={stopping}
               statusReady={statusReady}
               uptimeSeconds={uptimeSeconds}
+              busy={busy}
+              startServer={startServer}
+              stopServer={stopServer}
             />
             
             <ServerInfoCard
@@ -115,18 +117,8 @@ export function DashboardLayout({
             />
           </div>
 
-          {/* Right Column - Controls & Performance */}
+          {/* Right Column - Performance */}
           <div className="lg:col-span-2 space-y-6">
-            <ControlButtons
-              running={running}
-              preparing={preparing}
-              stopping={stopping}
-              busy={busy}
-              statusReady={statusReady}
-              startServer={startServer}
-              stopServer={stopServer}
-            />
-
             <PerformanceGraphs running={running} />
           </div>
         </div>

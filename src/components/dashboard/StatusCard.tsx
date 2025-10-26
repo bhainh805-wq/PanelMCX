@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { Play, Square } from 'lucide-react';
 
 interface StatusCardProps {
   running: boolean;
@@ -8,6 +9,9 @@ interface StatusCardProps {
   stopping: boolean;
   statusReady: boolean;
   uptimeSeconds: number | null;
+  busy: boolean;
+  startServer: () => void;
+  stopServer: () => void;
 }
 
 export function StatusCard({ 
@@ -15,8 +19,13 @@ export function StatusCard({
   preparing, 
   stopping, 
   statusReady,
-  uptimeSeconds 
+  uptimeSeconds,
+  busy,
+  startServer,
+  stopServer
 }: StatusCardProps) {
+  const startDisabled = busy || running || preparing || stopping || !statusReady;
+  const stopDisabled = busy || !running || preparing || stopping || !statusReady;
   const formatHMS = (totalSeconds: number) => {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
@@ -120,15 +129,87 @@ export function StatusCard({
             </motion.div>
           )}
 
-          {/* Status Description */}
+          {/* Control Buttons */}
           <div className="pt-4 border-t border-white/10">
-            <p className="text-xs text-white/50">
-              {running && 'Server is running and accepting connections'}
-              {preparing && 'Server is initializing, please wait...'}
-              {stopping && 'Server is shutting down gracefully...'}
-              {!statusReady && 'Fetching server status...'}
-              {!running && !preparing && !stopping && statusReady && 'Server is currently offline'}
-            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Start Button */}
+              <motion.button
+                whileHover={!startDisabled ? { scale: 1.02 } : {}}
+                whileTap={!startDisabled ? { scale: 0.98 } : {}}
+                onClick={startServer}
+                disabled={startDisabled}
+                className={`
+                  group relative overflow-hidden rounded-lg px-4 py-3
+                  font-semibold text-sm transition-all duration-300
+                  ${startDisabled
+                    ? 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800'
+                    : 'bg-gradient-to-br from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 border border-emerald-400/30'
+                  }
+                `}
+              >
+                {!startDisabled && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                )}
+                <div className="relative flex items-center justify-center gap-2">
+                  {busy && !running ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Starting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" fill="currentColor" />
+                      <span>Start</span>
+                    </>
+                  )}
+                </div>
+                {!startDisabled && (
+                  <div className="absolute inset-0 rounded-lg bg-emerald-400/20 blur-xl group-hover:bg-emerald-400/30 transition-all" />
+                )}
+              </motion.button>
+
+              {/* Stop Button */}
+              <motion.button
+                whileHover={!stopDisabled ? { scale: 1.02 } : {}}
+                whileTap={!stopDisabled ? { scale: 0.98 } : {}}
+                onClick={stopServer}
+                disabled={stopDisabled}
+                className={`
+                  group relative overflow-hidden rounded-lg px-4 py-3
+                  font-semibold text-sm transition-all duration-300
+                  ${stopDisabled
+                    ? 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800'
+                    : 'bg-gradient-to-br from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white shadow-lg shadow-red-500/30 hover:shadow-red-500/50 border border-red-400/30'
+                  }
+                `}
+              >
+                {!stopDisabled && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                )}
+                <div className="relative flex items-center justify-center gap-2">
+                  {busy && (running || stopping) ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Stopping...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Square className="w-4 h-4" fill="currentColor" />
+                      <span>Stop</span>
+                    </>
+                  )}
+                </div>
+                {!stopDisabled && (
+                  <div className="absolute inset-0 rounded-lg bg-red-400/20 blur-xl group-hover:bg-red-400/30 transition-all" />
+                )}
+              </motion.button>
+            </div>
           </div>
         </div>
       </div>
