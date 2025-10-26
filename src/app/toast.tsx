@@ -40,13 +40,13 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   const getIcon = () => {
     switch (toast.variant) {
       case "success":
-        return <CheckCircle2 className="w-5 h-5 flex-shrink-0" />;
+        return <CheckCircle2 className="w-4 h-4 flex-shrink-0" />;
       case "error":
-        return <XCircle className="w-5 h-5 flex-shrink-0" />;
+        return <XCircle className="w-4 h-4 flex-shrink-0" />;
       case "info":
-        return <Info className="w-5 h-5 flex-shrink-0" />;
+        return <Info className="w-4 h-4 flex-shrink-0" />;
       default:
-        return <CheckCircle2 className="w-5 h-5 flex-shrink-0" />;
+        return <CheckCircle2 className="w-4 h-4 flex-shrink-0" />;
     }
   };
 
@@ -98,16 +98,16 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
       }}
       className={`
         relative overflow-hidden rounded-lg border ${colors.border} ${colors.bg} 
-        shadow-xl backdrop-blur-sm min-w-[300px] max-w-md
+        shadow-lg backdrop-blur-sm min-w-[240px] max-w-sm
       `}
     >
       {/* Content */}
-      <div className="relative z-10 p-4">
-        <div className="flex items-start gap-3">
+      <div className="relative z-10 p-3">
+        <div className="flex items-start gap-2">
           <div className={colors.text}>
             {getIcon()}
           </div>
-          <p className={`flex-1 text-sm font-medium ${colors.text} leading-relaxed`}>
+          <p className={`flex-1 text-xs font-medium ${colors.text} leading-snug`}>
             {toast.message}
           </p>
           <button
@@ -115,7 +115,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
             className={`${colors.text} hover:opacity-70 transition-opacity`}
             aria-label="Dismiss"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -155,7 +155,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {/* Toast container */}
-      <div className="pointer-events-none fixed top-4 right-4 z-[1000] flex flex-col gap-3">
+      <div className="pointer-events-none fixed top-4 right-4 z-[1000] flex flex-col gap-2">
         <AnimatePresence mode="popLayout">
           {toasts.map((toast) => (
             <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />
