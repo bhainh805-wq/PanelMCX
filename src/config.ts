@@ -8,6 +8,8 @@ export type PanelConfig = {
   MAX_RAM?: string
   JAVA_IP?: string
   BEDROCK_IP?: string
+  ENABLE_PINGGY?: boolean
+  ENABLE_PLAYIT?: boolean
 }
 
 // Default values if keys are missing
@@ -57,6 +59,8 @@ export async function getConfig(): Promise<PanelConfig> {
     MAX_RAM: map.MAX_RAM || DEFAULTS.MAX_RAM,
     JAVA_IP: map.JAVA_IP || '',
     BEDROCK_IP: map.BEDROCK_IP || '',
+    ENABLE_PINGGY: map.ENABLE_PINGGY?.toLowerCase() === 'true',
+    ENABLE_PLAYIT: map.ENABLE_PLAYIT?.toLowerCase() === 'true',
   }
   return cfg
 }

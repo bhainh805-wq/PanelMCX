@@ -13,3 +13,10 @@ MAX_RAM=2G
 # Server addresses
 JAVA_IP=award-checking.gl.joinmc.link
 BEDROCK_IP=jobs-earn.gl.at.ply.gg:6958
+
+# Tunnel services (set to true to enable, false to disable)
+# Pinggy tunnel for Java Edition
+ENABLE_PINGGY=false
+
+# Playit tunnel for Bedrock Edition
+ENABLE_PLAYIT=false

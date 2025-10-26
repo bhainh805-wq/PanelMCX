@@ -15,6 +15,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as pty from 'node-pty';
 import stripAnsi from 'strip-ansi';
 import { pinggy } from '@pinggy/pinggy';
+import { getConfig } from './src/config';
 
 import * as os from 'os';
 
@@ -270,6 +271,11 @@ app.prepare().then(() => {
   server.listen(port, async () => {
     console.log(`Server listening on http://${hostname}:${port}`);
 
+    // Load configuration
+    const config = await getConfig();
+    console.log('[config] ENABLE_PINGGY:', config.ENABLE_PINGGY);
+    console.log('[config] ENABLE_PLAYIT:', config.ENABLE_PLAYIT);
+
     // Pinggy tunnel management: periodically restart the tunnel without stopping Node.js
     const PINGGY_RESTART_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
     let pinggyTunnel: any | null = null;
@@ -314,26 +320,36 @@ app.prepare().then(() => {
       }
     };
 
-    // Start tunnel initially
-    await startPinggyTunnel();
+    // Start tunnel initially only if enabled
+    if (config.ENABLE_PINGGY) {
+      console.log('[pinggy] Enabled in config, starting tunnel...');
+      await startPinggyTunnel();
 
-    // Periodic restart without killing Node.js
-    setInterval(() => {
-      restartPinggyTunnel();
-    }, PINGGY_RESTART_INTERVAL_MS);
+      // Periodic restart without killing Node.js
+      setInterval(() => {
+        restartPinggyTunnel();
+      }, PINGGY_RESTART_INTERVAL_MS);
+    } else {
+      console.log('[pinggy] Disabled in config, skipping tunnel startup');
+    }
 
 
 
-    // Start playit on server start
-    try {
-      const { spawn } = await import('child_process');
-      const playit = spawn('playit', [], { env: process.env });
-      // Silence playit output in terminal; do not attach stdout/stderr to console
-      // You may attach to a file or buffer elsewhere if needed
-      playit.on('exit', (code, signal) => console.log(`[playit] exited code=${code} signal=${signal}`));
-    } catch (e: any) {
-      console.error('[playit] failed to start on boot:', e?.message || String(e));
-      console.error('[playit] Ensure the binary is installed and in PATH');
+    // Start playit on server start only if enabled
+    if (config.ENABLE_PLAYIT) {
+      console.log('[playit] Enabled in config, starting...');
+      try {
+        const { spawn } = await import('child_process');
+        const playit = spawn('playit', [], { env: process.env });
+        // Silence playit output in terminal; do not attach stdout/stderr to console
+        // You may attach to a file or buffer elsewhere if needed
+        playit.on('exit', (code, signal) => console.log(`[playit] exited code=${code} signal=${signal}`));
+      } catch (e: any) {
+        console.error('[playit] failed to start on boot:', e?.message || String(e));
+        console.error('[playit] Ensure the binary is installed and in PATH');
+      }
+    } else {
+      console.log('[playit] Disabled in config, skipping startup');
     }
 
     // Tunnel management above handles start and periodic restarts
