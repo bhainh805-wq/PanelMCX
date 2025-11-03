@@ -3,7 +3,7 @@
 JAR_NAME=paper-1.21.1-133.jar
 
 # Full path to the Minecraft server folder
-MC_DIR=/app/my-next-app/mc
+MC_DIR=/app/PanelMCX/mc
 
 # Minimum and Maximum RAM for JVM
 # Use standard JVM size suffixes like M or G (e.g., 512M, 1G, 2G)
@@ -16,7 +16,7 @@ BEDROCK_IP=jobs-earn.gl.at.ply.gg:6958
 
 # Tunnel services (set to true to enable, false to disable)
 # Pinggy tunnel for Java Edition
-ENABLE_PINGGY=false
+ENABLE_PINGGY=true
 
 # Playit tunnel for Bedrock Edition
 ENABLE_PLAYIT=false

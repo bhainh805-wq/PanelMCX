@@ -5,7 +5,7 @@
  * 1. Next.js application (HTTP)
  * 2. WebSocket connections for terminal
  * 3. PTY (pseudo-terminal) session
- * 4. Blessed terminal UI display
+ * 4. Server status management
  */
 
 import { createServer } from 'http';
@@ -16,11 +16,11 @@ import * as pty from 'node-pty';
 import stripAnsi from 'strip-ansi';
 import { pinggy } from '@pinggy/pinggy';
 import { getConfig } from './src/config';
+import { statusManager } from './src/lib/statusManager';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import * as os from 'os';
-
-// Server console TUI removed; use web UI with @xterm/xterm instead
-const USE_BLESSED = false;
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -37,10 +37,87 @@ let outputBuffer = '';
 const MAX_BUFFER_SIZE = 50000;
 
 // Panel-driven uptime tracking (start on 'start' action, stop on 'stop')
-let panelUptimeStart: number | null = null; // ms epoch when started
-let panelUptimeActive = false; // whether uptime should advance
+let panelUptimeStart: number | null = null;
+let panelUptimeActive = false;
 
-// Server-side terminal UI removed (previously used blessed).
+/**
+ * Server Properties Management
+ */
+let mcFolderPath: string = '';
+
+/**
+ * Read server.properties file
+ */
+async function readServerProperties(): Promise<{ [key: string]: string }> {
+  try {
+    if (!mcFolderPath) {
+      const config = await getConfig();
+      mcFolderPath = config.MC_DIR || path.join(process.cwd(), 'mc');
+    }
+    
+    const propsPath = path.join(mcFolderPath, 'server.properties');
+    const content = await fs.promises.readFile(propsPath, 'utf8');
+    
+    const properties: { [key: string]: string } = {};
+    const lines = content.split(/\r?\n/);
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        if (key) {
+          properties[key.trim()] = valueParts.join('=').trim();
+        }
+      }
+    }
+    
+    return properties;
+  } catch (error) {
+    console.error('[ServerProperties] Error reading server.properties:', error);
+    return {};
+  }
+}
+
+/**
+ * Update a property in server.properties file
+ */
+async function updateServerProperty(key: string, value: string): Promise<boolean> {
+  try {
+    if (!mcFolderPath) {
+      const config = await getConfig();
+      mcFolderPath = config.MC_DIR || path.join(process.cwd(), 'mc');
+    }
+    
+    const propsPath = path.join(mcFolderPath, 'server.properties');
+    const content = await fs.promises.readFile(propsPath, 'utf8');
+    const lines = content.split(/\r?\n/);
+    
+    let updated = false;
+    const newLines = lines.map(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [lineKey] = trimmed.split('=');
+        if (lineKey && lineKey.trim() === key) {
+          updated = true;
+          return `${key}=${value}`;
+        }
+      }
+      return line;
+    });
+    
+    // If property doesn't exist, add it
+    if (!updated) {
+      newLines.push(`${key}=${value}`);
+    }
+    
+    await fs.promises.writeFile(propsPath, newLines.join('\n'), 'utf8');
+    console.log(`[ServerProperties] Updated ${key}=${value}`);
+    return true;
+  } catch (error) {
+    console.error('[ServerProperties] Error updating server.properties:', error);
+    return false;
+  }
+}
 
 /**
  * Create the persistent PTY session
@@ -66,7 +143,22 @@ ptyProcess.onData((data: string) => {
     outputBuffer = outputBuffer.slice(-MAX_BUFFER_SIZE);
   }
   
-
+  // Parse terminal output for server status detection
+  try {
+    // Strip ANSI codes for clean parsing
+    const cleanData = stripAnsi(data);
+    const lines = cleanData.split(/\r?\n/);
+    
+    // Check each line for the "Done" message
+    for (const line of lines) {
+      if (line.trim()) {
+        // Pass line to status manager for processing
+        statusManager.handleTerminalLine(line);
+      }
+    }
+  } catch (error) {
+    // Ignore parsing errors
+  }
   
   // Broadcast to all connected clients
   const message = JSON.stringify({ type: 'output', data });
@@ -82,7 +174,6 @@ ptyProcess.onData((data: string) => {
  */
 ptyProcess.onExit(({ exitCode, signal }) => {
   console.log(`Terminal process exited with code ${exitCode}, signal ${signal}`);
-
 });
 
 /**
@@ -91,15 +182,12 @@ ptyProcess.onExit(({ exitCode, signal }) => {
 function updateStatusBar() {
   const clientCount = clients.size;
   console.log(`Connected clients: ${clientCount}`);
-
 }
 
-/**
- * Handle blessed screen events (if enabled)
- */
 // Handle Ctrl+C to shutdown server
 process.on('SIGINT', () => {
   console.log('\nShutting down server...');
+  statusManager.destroy();
   ptyProcess.kill();
   process.exit(0);
 });
@@ -107,9 +195,116 @@ process.on('SIGINT', () => {
 /**
  * Start the server
  */
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  // Initialize status manager before starting server
+  console.log('[Server] Initializing status manager...');
+  await statusManager.initialize();
+  const initialStatus = statusManager.getStatus();
+  console.log(`[Server] Initial status: ${initialStatus}`);
+  
+  // If server is already running on startup, start uptime counter
+  if (initialStatus === 'running') {
+    console.log('[Server] Server is already running, starting uptime counter');
+    panelUptimeStart = Date.now();
+    panelUptimeActive = true;
+  }
+
+  // Add status change listener to broadcast to all WebSocket clients
+  statusManager.addListener((statusInfo) => {
+    console.log('[Server] Broadcasting status update to clients:', statusInfo.status);
+    
+    // Manage uptime based on status changes
+    if (statusInfo.status === 'running') {
+      // Start uptime when server becomes running (online)
+      if (!panelUptimeActive) {
+        console.log('[Server] Server is now running, starting uptime counter');
+        panelUptimeStart = Date.now();
+        panelUptimeActive = true;
+      }
+    } else if (statusInfo.status === 'stopped') {
+      // Stop uptime when server stops
+      if (panelUptimeActive) {
+        console.log('[Server] Server stopped, stopping uptime counter');
+        panelUptimeActive = false;
+        panelUptimeStart = null;
+      }
+    }
+    
+    const message = JSON.stringify({ 
+      type: 'status', 
+      data: {
+        status: statusInfo.status,
+        processFound: statusInfo.processFound,
+        pid: statusInfo.pid,
+        timestamp: statusInfo.timestamp
+      }
+    });
+    
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  });
+
   const server = createServer(async (req, res) => {
     const parsedUrl = parse(req.url!, true);
+
+    // GET /api/server-properties — read server.properties
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/server-properties') {
+      try {
+        const properties = await readServerProperties();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, properties }));
+      } catch (error: any) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: false, error: error.message }));
+      }
+      return;
+    }
+
+    // POST /api/server-properties — update server property
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/server-properties') {
+      try {
+        // Check if server is running
+        const currentStatus = statusManager.getStatus();
+        if (currentStatus === 'running' || currentStatus === 'starting') {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ 
+            success: false, 
+            error: 'Cannot modify server.properties while server is running' 
+          }));
+          return;
+        }
+
+        // Read JSON body
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        const bodyRaw = Buffer.concat(chunks).toString('utf8');
+        const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+
+        const { key, value } = body;
+        if (!key || value === undefined) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: 'key and value are required' }));
+          return;
+        }
+
+        const success = await updateServerProperty(key, value);
+        res.statusCode = success ? 200 : 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success }));
+      } catch (error: any) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: false, error: error.message }));
+      }
+      return;
+    }
 
     // POST /api/exec — execute a command on the shared PTY and return output window
     if (req.method === 'POST' && parsedUrl.pathname === '/api/exec') {
@@ -142,7 +337,6 @@ app.prepare().then(() => {
         await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 
         // Stop capturing
-        // node-pty doesn't support offData; reassign a wrapper using removeListener
         (ptyProcess as any).removeListener?.('data', listener);
 
         const cleanOutput = stripAnsi(captured || '');
@@ -186,14 +380,29 @@ app.prepare().then(() => {
     clients.add(ws);
     updateStatusBar();
     
-    // Send terminal history to new client (only if ws is open)
+    // Send terminal history to new client
     try {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'history', data: outputBuffer }));
       }
     } catch {}
 
-    
+    // Send current status to new client
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        const statusInfo = statusManager.getStatusInfo();
+        ws.send(JSON.stringify({ 
+          type: 'status', 
+          data: {
+            status: statusInfo.status,
+            processFound: statusInfo.processFound,
+            pid: statusInfo.pid,
+            timestamp: statusInfo.timestamp
+          }
+        }));
+      }
+    } catch {}
+
     /**
      * Handle incoming messages from clients
      */
@@ -230,13 +439,16 @@ app.prepare().then(() => {
             }
           }
         } else if (data.type === 'panel-action') {
-          // Client-side UI signals start/stop for uptime
+          // Handle panel actions for status
           if (data.action === 'start') {
-            panelUptimeStart = Date.now();
-            panelUptimeActive = true;
+            console.log('[Server] Panel action: start');
+            // Set status to starting (uptime will start when status becomes 'running')
+            // Note: Client sends 'clear' command and waits 1 second before sending Java command
+            statusManager.setStatus('starting');
           } else if (data.action === 'stop') {
-            panelUptimeActive = false;
-            panelUptimeStart = null;
+            console.log('[Server] Panel action: stop');
+            // Set status to stopping (uptime will stop when status becomes 'stopped')
+            statusManager.setStatus('stopping');
           }
         }
       } catch (error: any) {
@@ -276,7 +488,7 @@ app.prepare().then(() => {
     console.log('[config] ENABLE_PINGGY:', config.ENABLE_PINGGY);
     console.log('[config] ENABLE_PLAYIT:', config.ENABLE_PLAYIT);
 
-    // Pinggy tunnel management: periodically restart the tunnel without stopping Node.js
+    // Pinggy tunnel management
     const PINGGY_RESTART_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
     let pinggyTunnel: any | null = null;
     let restarting = false;
@@ -290,8 +502,8 @@ app.prepare().then(() => {
           reconnectInterval: 5,
           maxReconnectAttempts: 20
         });
-        await t.start();
-        console.log('[pinggy] Tunnel started. URLs:', t.urls());
+        const urls = await t.start();
+        console.log('[pinggy] Tunnel started. URLs:', urls);
         pinggyTunnel = t;
       } catch (e: any) {
         console.error('[pinggy] failed to start:', e?.message || String(e));
@@ -325,7 +537,7 @@ app.prepare().then(() => {
       console.log('[pinggy] Enabled in config, starting tunnel...');
       await startPinggyTunnel();
 
-      // Periodic restart without killing Node.js
+      // Periodic restart
       setInterval(() => {
         restartPinggyTunnel();
       }, PINGGY_RESTART_INTERVAL_MS);
@@ -333,16 +545,12 @@ app.prepare().then(() => {
       console.log('[pinggy] Disabled in config, skipping tunnel startup');
     }
 
-
-
     // Start playit on server start only if enabled
     if (config.ENABLE_PLAYIT) {
       console.log('[playit] Enabled in config, starting...');
       try {
         const { spawn } = await import('child_process');
         const playit = spawn('playit', [], { env: process.env });
-        // Silence playit output in terminal; do not attach stdout/stderr to console
-        // You may attach to a file or buffer elsewhere if needed
         playit.on('exit', (code, signal) => console.log(`[playit] exited code=${code} signal=${signal}`));
       } catch (e: any) {
         console.error('[playit] failed to start on boot:', e?.message || String(e));
@@ -351,7 +559,5 @@ app.prepare().then(() => {
     } else {
       console.log('[playit] Disabled in config, skipping startup');
     }
-
-    // Tunnel management above handles start and periodic restarts
   });
 });

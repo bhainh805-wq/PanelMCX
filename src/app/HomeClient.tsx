@@ -20,36 +20,42 @@ export default function HomeClient({ javaIp, bedrockIp, startCommand }: HomeClie
   const [serverInfo, setServerInfo] = useState<any>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const stoppingHoldUntilRef = useRef<number>(0);
-  const stoppingTimerRef = useRef<number | null>(null);
   const [uptimeSeconds, setUptimeSeconds] = useState<number | null>(null);
 
   const handleStatusUpdate = useCallback((data: any) => {
-    const isOnline = data?.status === 'online';
-    const isStarting = data?.status === 'starting' || data?.status === 'preparing';
-    const isStopping = data?.status === 'stopping';
+    const status = data?.status;
+    
+    console.log('[HomeClient] Status update received:', status);
+    
+    // Map status to UI states
+    // Status can be: 'online', 'offline', 'starting', 'stopping'
+    const isOnline = status === 'online';
+    const isStarting = status === 'starting';
+    const isStopping = status === 'stopping';
+    const isOffline = status === 'offline';
+    
     setRunning(isOnline);
-    setServerInfo(data);
-    // reflect remote status in local flags
     setPreparing(isStarting);
-    if (isStopping) setStopping(true);
-    if (isOnline) {
-      // Only clear 'stopping' if hold window has elapsed
-      if (Date.now() > stoppingHoldUntilRef.current) setStopping(false);
-    } else {
-      if (Date.now() > stoppingHoldUntilRef.current && !isStopping) setStopping(false);
-    }
+    setStopping(isStopping);
+    setServerInfo(data);
     setStatusReady(true);
+    
+    // Clear busy state when we reach a stable state
+    if (isOnline || isOffline) {
+      setBusy(false);
+    }
   }, []);
 
-  // Setup a lightweight WS connection to send commands and receive uptime
+  // Setup WebSocket connection for terminal and uptime
   useEffect(() => {
     const ws = getOrCreateTerminalWS();
     wsRef.current = ws;
+    
     // Listen for uptime updates
     const removeListener = addUptimeListener((seconds: number) => {
       setUptimeSeconds(seconds);
     });
+    
     return () => {
       removeListener();
     };
@@ -65,54 +71,61 @@ export default function HomeClient({ javaIp, bedrockIp, startCommand }: HomeClie
   }, []);
 
   const startServer = useCallback(async () => {
-    setBusy(true); setError(null); setStopping(false);
+    setBusy(true);
+    setError(null);
+    setStopping(false);
     setPreparing(true);
+    
     try {
-      // Use command built from config on server side
       if (!startCommand) throw new Error('Start command not available');
+      
+      // Notify server to start uptime counter and set status to 'starting'
+      panelAction('start');
+      
+      // Send clear command first
+      const clearOk = sendInput('clear\n');
+      if (!clearOk) throw new Error('Terminal connection not ready');
+      
+      // Wait 1 second before sending the Java start command
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Send the start command
       const ok = sendInput(startCommand + "\n");
       if (!ok) throw new Error('Terminal connection not ready');
-      // Notify server to start uptime counter
-      panelAction('start');
-      // Status will be updated via SSE
+      
+      // Status will be updated via SSE (which gets it from WebSocket)
     } catch (e: any) {
       setError(e?.message || 'Failed to start');
       setPreparing(false);
-    } finally {
       setBusy(false);
     }
   }, [sendInput, startCommand]);
 
   const stopServer = useCallback(async () => {
-    setBusy(true); setError(null); setPreparing(false);
-    // Enter stopping state and hold it for 10 seconds regardless of status
+    setBusy(true);
+    setError(null);
+    setPreparing(false);
     setStopping(true);
-    const HOLD_MS = 10_000;
-    stoppingHoldUntilRef.current = Date.now() + HOLD_MS;
-    if (stoppingTimerRef.current) window.clearTimeout(stoppingTimerRef.current);
-    stoppingTimerRef.current = window.setTimeout(() => {
-      // Release hold; SSE will update status
-      stoppingHoldUntilRef.current = 0;
-      setStopping(false);
-      stoppingTimerRef.current = null;
-    }, HOLD_MS);
-
+    
     try {
-      const ok = sendInput('\x03'); // Ctrl+C
-      if (!ok) throw new Error('Terminal connection not ready');
-      // Notify server to stop uptime counter immediately
+      // Notify server to stop uptime counter and set status to 'stopping'
       panelAction('stop');
-      // Optional mid-check for visibility; won't clear stopping due to hold
-      // Status will be updated via SSE
+      
+      // Send Ctrl+C
+      const ok = sendInput('\x03');
+      if (!ok) throw new Error('Terminal connection not ready');
+      
+      // Status will be updated via SSE (which gets it from WebSocket)
     } catch (e: any) {
       setError(e?.message || 'Failed to stop');
-    } finally {
+      setStopping(false);
       setBusy(false);
     }
   }, [sendInput]);
 
   useEffect(() => {
     // Set up Server-Sent Events for real-time status updates
+    // SSE endpoint connects to WebSocket server-side to get status
     const eventSource = new EventSource('/api/server-status-stream');
     eventSourceRef.current = eventSource;
 
@@ -134,9 +147,6 @@ export default function HomeClient({ javaIp, bedrockIp, startCommand }: HomeClie
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
-      }
-      if (stoppingTimerRef.current) {
-        window.clearTimeout(stoppingTimerRef.current);
       }
     };
   }, [handleStatusUpdate]);

@@ -316,7 +316,7 @@ function FilesClient() {
   }, [deletingPath, showToast, loadFiles]);
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto pb-16">
       <div className="p-4 md:p-10 h-full">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">

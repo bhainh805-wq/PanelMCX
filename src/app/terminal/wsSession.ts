@@ -3,6 +3,7 @@
 let ws: WebSocket | null = null;
 let listeners = new Set<(type: "output" | "history", data: string) => void>();
 let uptimeListeners = new Set<(seconds: number) => void>();
+let statusListeners = new Set<(statusData: any) => void>();
 let openCallbacks = new Set<() => void>();
 let buffer = "";
 const MAX_BUFFER = 50000;
@@ -28,6 +29,11 @@ export function panelAction(action: 'start' | 'stop') {
 export function addUptimeListener(fn: (seconds: number) => void) {
   uptimeListeners.add(fn);
   return () => uptimeListeners.delete(fn);
+}
+
+export function addStatusListener(fn: (statusData: any) => void) {
+  statusListeners.add(fn);
+  return () => statusListeners.delete(fn);
 }
 
 export function getTerminalBuffer() {
@@ -68,6 +74,11 @@ export function getOrCreateTerminalWS(): WebSocket {
       } else if (msg?.type === 'uptime') {
         const s = typeof msg.uptimeSeconds === 'number' ? msg.uptimeSeconds : null;
         if (s != null) uptimeListeners.forEach((fn) => { try { fn(s); } catch {} });
+      } else if (msg?.type === 'status') {
+        // Broadcast status updates to all status listeners
+        statusListeners.forEach((fn) => {
+          try { fn(msg.data); } catch {}
+        });
       }
     } catch {}
   };

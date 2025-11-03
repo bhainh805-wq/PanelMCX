@@ -1,0 +1,6 @@
+ignoredBuiltDependencies:
+  - '@pinggy/pinggy'
+  - esbuild
+  - node-pty
+  - sharp
+  - unrs-resolver

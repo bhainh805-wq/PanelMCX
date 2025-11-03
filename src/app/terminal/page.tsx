@@ -157,12 +157,12 @@ export default function TerminalPage() {
         <TerminalIcon className="h-5 w-5" />
         <h1 className="text-lg font-semibold">Terminal</h1>
       </div>
-      {/* Terminal area: height fills the rest below header */}
-      <div className="flex-1 w-full relative">
+      {/* Terminal area: height fills the rest below header, with padding for bottom nav */}
+      <div className="flex-1 w-full relative pb-16">
         <div
           ref={containerRef}
           className="terminal-container absolute inset-0 overflow-auto"
-          style={{ height: '100%' }}
+          style={{ height: '100%', paddingBottom: '4rem' }}
         />
       </div>
     </div>
