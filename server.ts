@@ -17,6 +17,7 @@ import stripAnsi from 'strip-ansi';
 import { pinggy } from '@pinggy/pinggy';
 import { getConfig } from './src/config';
 import { statusManager } from './src/lib/statusManager';
+import { s3BackupService } from './src/lib/s3Backup';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -558,6 +559,18 @@ app.prepare().then(async () => {
       }
     } else {
       console.log('[playit] Disabled in config, skipping startup');
+    }
+
+    // Start S3 Backup Service
+    try {
+      console.log('[S3Backup] Initializing backup service...');
+      const mcPath = config.MC_DIR || path.join(process.cwd(), 'mc');
+      await s3BackupService.initialize(mcPath);
+      s3BackupService.startAutoBackup();
+      console.log('[S3Backup] Backup service started successfully');
+    } catch (e: any) {
+      console.error('[S3Backup] Failed to start backup service:', e?.message || String(e));
+      console.error('[S3Backup] Backups will not be performed');
     }
   });
 });

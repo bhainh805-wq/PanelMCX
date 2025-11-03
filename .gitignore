@@ -42,6 +42,8 @@ next-env.d.ts
 
 # local docs not for VCS
 AGENTS.md
+*.md
+!README.md
 
 # zip files
 *.zip
