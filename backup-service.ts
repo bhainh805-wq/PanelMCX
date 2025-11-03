@@ -1,16 +1,16 @@
 /**
  * Standalone S3 Backup Service
  * 
- * Automatically uploads the mc folder to IDrive e2 S3-compatible storage
+ * Creates a compressed zip of the mc folder and uploads to S3
  * Runs every 10 minutes
  * 
  * Usage: ts-node backup-service.ts
- * Or: node backup-service.js (after compilation)
  */
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, CreateBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, CreateBucketCommand, ListBucketsCommand } from '@aws-sdk/client-s3';
 import * as fs from 'fs';
 import * as path from 'path';
+import archiver from 'archiver';
 import { getConfig } from './src/config';
 
 // S3 Configuration
@@ -24,12 +24,14 @@ const S3_CONFIG = {
   forcePathStyle: true,
 };
 
-const BUCKET_NAME = 'mc';
+const BUCKET_NAME = 'test';
+const ZIP_NAME = 'mc.zip';
 const BACKUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
 class BackupService {
   private s3Client: S3Client;
   private mcFolderPath: string = '';
+  private tempZipPath: string = '';
   private isBackupRunning = false;
   private backupCount = 0;
 
@@ -52,6 +54,8 @@ class BackupService {
       this.mcFolderPath = path.join(process.cwd(), 'mc');
     }
 
+    this.tempZipPath = path.join(process.cwd(), ZIP_NAME);
+
     // Check if folder exists
     if (!fs.existsSync(this.mcFolderPath)) {
       console.error(`✗ MC folder does not exist: ${this.mcFolderPath}`);
@@ -59,11 +63,13 @@ class BackupService {
     }
 
     console.log(`✓ MC folder exists`);
+    console.log(`✓ Temp zip path: ${this.tempZipPath}`);
     console.log(`✓ Backup interval: ${BACKUP_INTERVAL / 1000 / 60} minutes`);
     console.log(`✓ S3 Endpoint: ${S3_CONFIG.endpoint}`);
     console.log(`✓ Bucket: ${BUCKET_NAME}`);
+    console.log(`✓ Zip name: ${ZIP_NAME}`);
 
-    // Test S3 connection and create bucket if needed
+    // Ensure bucket exists
     await this.ensureBucket();
     console.log('✓ S3 connection successful');
     console.log('='.repeat(60));
@@ -71,29 +77,22 @@ class BackupService {
 
   private async ensureBucket(): Promise<void> {
     try {
-      // Try to list objects (this will fail if bucket doesn't exist)
-      const command = new ListObjectsV2Command({
-        Bucket: BUCKET_NAME,
-        MaxKeys: 1,
-      });
-      await this.s3Client.send(command);
-      console.log(`✓ Bucket "${BUCKET_NAME}" exists`);
-    } catch (error: any) {
-      if (error.name === 'NoSuchBucket') {
+      const listCommand = new ListBucketsCommand({});
+      const response = await this.s3Client.send(listCommand);
+      
+      const bucketExists = response.Buckets?.some(b => b.Name === BUCKET_NAME);
+      
+      if (!bucketExists) {
         console.log(`⚠ Bucket "${BUCKET_NAME}" does not exist, creating...`);
-        try {
-          const createCommand = new CreateBucketCommand({
-            Bucket: BUCKET_NAME,
-          });
-          await this.s3Client.send(createCommand);
-          console.log(`✓ Bucket "${BUCKET_NAME}" created successfully`);
-        } catch (createError) {
-          console.error('✗ Failed to create bucket:', createError);
-          throw createError;
-        }
+        const createCommand = new CreateBucketCommand({ Bucket: BUCKET_NAME });
+        await this.s3Client.send(createCommand);
+        console.log(`✓ Bucket "${BUCKET_NAME}" created successfully`);
       } else {
-        throw error;
+        console.log(`✓ Bucket "${BUCKET_NAME}" exists`);
       }
+    } catch (error) {
+      console.error('✗ Failed to check/create bucket:', error);
+      throw error;
     }
   }
 
@@ -111,6 +110,66 @@ class BackupService {
     console.log('✓ Backup service is running');
     console.log(`  Next backup in ${BACKUP_INTERVAL / 1000 / 60} minutes`);
     console.log('  Press Ctrl+C to stop\n');
+  }
+
+  private async createZip(): Promise<{ path: string; size: number }> {
+    return new Promise((resolve, reject) => {
+      // Remove old zip if exists
+      if (fs.existsSync(this.tempZipPath)) {
+        fs.unlinkSync(this.tempZipPath);
+      }
+
+      const output = fs.createWriteStream(this.tempZipPath);
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // Maximum compression
+      });
+
+      let totalBytes = 0;
+
+      output.on('close', () => {
+        totalBytes = archive.pointer();
+        resolve({ path: this.tempZipPath, size: totalBytes });
+      });
+
+      archive.on('error', (err) => {
+        reject(err);
+      });
+
+      archive.on('warning', (err) => {
+        if (err.code === 'ENOENT') {
+          console.warn('  ⚠ Warning:', err.message);
+        } else {
+          reject(err);
+        }
+      });
+
+      archive.pipe(output);
+      archive.directory(this.mcFolderPath, false);
+      archive.finalize();
+    });
+  }
+
+  private async uploadZip(zipPath: string): Promise<void> {
+    const fileContent = await fs.promises.readFile(zipPath);
+
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: ZIP_NAME,
+      Body: fileContent,
+      ContentType: 'application/zip',
+    });
+
+    await this.s3Client.send(command);
+  }
+
+  private deleteLocalZip(): void {
+    try {
+      if (fs.existsSync(this.tempZipPath)) {
+        fs.unlinkSync(this.tempZipPath);
+      }
+    } catch (error) {
+      console.error('  ✗ Failed to delete local zip:', error);
+    }
   }
 
   private async performBackup(): Promise<void> {
@@ -134,103 +193,36 @@ class BackupService {
         return;
       }
 
-      // Create timestamp for this backup
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('.')[0];
-      const backupPrefix = `backup-${timestamp}/`;
+      // Step 1: Create compressed zip
+      console.log('📁 Creating compressed zip...');
+      const { size } = await this.createZip();
+      console.log(`  ✓ Zip created: ${this.formatBytes(size)}`);
 
-      console.log(`📁 Scanning folder: ${this.mcFolderPath}`);
-      
-      // Get all files
-      const files = await this.getAllFiles(this.mcFolderPath);
-      console.log(`✓ Found ${files.length} files to upload`);
+      // Step 2: Upload to S3
+      console.log('☁️  Uploading to S3...');
+      await this.uploadZip(this.tempZipPath);
+      console.log(`  ✓ Uploaded to s3://${BUCKET_NAME}/${ZIP_NAME}`);
 
-      if (files.length === 0) {
-        console.log('⚠ No files to backup');
-        return;
-      }
-
-      let uploadedCount = 0;
-      let failedCount = 0;
-      let totalBytes = 0;
-
-      // Upload each file
-      for (const filePath of files) {
-        try {
-          const relativePath = path.relative(this.mcFolderPath, filePath);
-          const s3Key = `${backupPrefix}${relativePath}`;
-          
-          const stats = await fs.promises.stat(filePath);
-          totalBytes += stats.size;
-
-          await this.uploadFile(filePath, s3Key);
-          uploadedCount++;
-
-          // Log progress every 10 files
-          if (uploadedCount % 10 === 0) {
-            console.log(`  ↑ Progress: ${uploadedCount}/${files.length} files (${this.formatBytes(totalBytes)})`);
-          }
-        } catch (error) {
-          console.error(`  ✗ Failed: ${path.basename(filePath)}`);
-          failedCount++;
-        }
-      }
+      // Step 3: Delete local zip
+      console.log('🧹 Cleaning up...');
+      this.deleteLocalZip();
+      console.log('  ✓ Local zip deleted');
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       
       console.log('─'.repeat(60));
       console.log(`✓ Backup completed in ${duration}s`);
-      console.log(`  • Uploaded: ${uploadedCount} files`);
-      console.log(`  • Failed: ${failedCount} files`);
-      console.log(`  • Total size: ${this.formatBytes(totalBytes)}`);
-      console.log(`  • S3 path: s3://${BUCKET_NAME}/${backupPrefix}`);
+      console.log(`  • Compressed size: ${this.formatBytes(size)}`);
+      console.log(`  • S3 location: s3://${BUCKET_NAME}/${ZIP_NAME}`);
       console.log('─'.repeat(60));
       console.log(`⏰ Next backup at ${new Date(Date.now() + BACKUP_INTERVAL).toLocaleTimeString()}\n`);
 
     } catch (error) {
       console.error('✗ Backup failed:', error);
+      this.deleteLocalZip();
     } finally {
       this.isBackupRunning = false;
     }
-  }
-
-  private async getAllFiles(dirPath: string): Promise<string[]> {
-    const files: string[] = [];
-
-    try {
-      const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-
-      for (const item of items) {
-        const fullPath = path.join(dirPath, item.name);
-
-        // Skip certain directories
-        if (item.isDirectory()) {
-          // Skip cache and temp directories
-          if (item.name === 'cache' || item.name === 'logs') {
-            continue;
-          }
-          const subFiles = await this.getAllFiles(fullPath);
-          files.push(...subFiles);
-        } else if (item.isFile()) {
-          files.push(fullPath);
-        }
-      }
-    } catch (error) {
-      console.error(`Error reading directory ${dirPath}:`, error);
-    }
-
-    return files;
-  }
-
-  private async uploadFile(filePath: string, s3Key: string): Promise<void> {
-    const fileContent = await fs.promises.readFile(filePath);
-
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: s3Key,
-      Body: fileContent,
-    });
-
-    await this.s3Client.send(command);
   }
 
   private formatBytes(bytes: number): string {
