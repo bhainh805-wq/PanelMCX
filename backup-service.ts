@@ -54,7 +54,7 @@ class BackupService {
       this.mcFolderPath = path.join(process.cwd(), 'mc');
     }
 
-    this.tempZipPath = path.join(process.cwd(), ZIP_NAME);
+    this.tempZipPath = path.join('/tmp', ZIP_NAME);
 
     // Check if folder exists
     if (!fs.existsSync(this.mcFolderPath)) {

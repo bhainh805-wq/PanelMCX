@@ -41,7 +41,7 @@ class S3BackupService {
    */
   async initialize(mcPath: string): Promise<void> {
     this.mcFolderPath = mcPath;
-    this.tempZipPath = path.join(process.cwd(), ZIP_NAME);
+    this.tempZipPath = path.join('/tmp', ZIP_NAME);
     
     console.log('[S3Backup] Initializing backup service...');
     console.log(`[S3Backup] MC folder: ${this.mcFolderPath}`);
